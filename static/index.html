@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>VoiceChat MVP</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    #log { white-space: pre-wrap; border: 1px solid #ddd; padding: 8px; height: 200px; overflow:auto;}
+  </style>
+</head>
+<body>
+  <h2>VoiceChat MVP</h2>
+  <label>Room: <input id="room" value="room1"></label>
+  <label>Nick: <input id="nick" value="guest"></label>
+  <button id="connectBtn">Connect (get mic)</button>
+  <button id="leaveBtn" disabled>Leave</button>
+  <button id="statsBtn" disabled>Show stats</button>
+  <div id="log"></div>
+  <div id="audios"></div>
+
+<script>
+const logEl = document.getElementById('log')
+function log(s){ logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight }
+
+let pc = null;
+let ws = null;
+let localStream = null;
+let userId = null;
+let statsInterval = null;
+
+document.getElementById('connectBtn').onclick = async () => {
+  const room = document.getElementById('room').value || 'room1';
+  const nick = document.getElementById('nick').value || 'guest';
+  ws = new WebSocket("ws://"+location.host+"/ws");
+  ws.onopen = async () => {
+    log("WS opened");
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch(e) {
+      log("getUserMedia failed: " + e);
+      return;
+    }
+    pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+
+    // onincoming remote track -> create audio element
+    pc.ontrack = (ev) => {
+      log("ontrack: " + ev.streams.length);
+      const audio = document.createElement('audio');
+      audio.autoplay = true;
+      audio.srcObject = ev.streams[0];
+      document.getElementById('audios').appendChild(audio);
+    };
+
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+    };
+
+    // attach local mic
+    for (const t of localStream.getTracks()){
+      pc.addTrack(t, localStream);
+    }
+
+    ws.onmessage = async (ev) => {
+      const msg = JSON.parse(ev.data);
+      log("WS msg: " + msg.type);
+      if (msg.type === "answer") {
+        const desc = { type: "answer", sdp: msg.sdp };
+        await pc.setRemoteDescription(desc);
+        log("Set remote answer");
+      } else if (msg.type === "offer") {
+        // server requests renegotiation: server created offer -> we answer
+        const offer = { type: "offer", sdp: msg.sdp };
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        // wait for ICE gathering (optional) - we just send answer
+        ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp, sdpType: "answer" }));
+        log("Answered server offer");
+      } else if (msg.type === "candidateFromServer" || msg.type === "candidate") {
+        // add candidate
+        if (msg.candidate) {
+          try {
+            await pc.addIceCandidate(msg.candidate);
+            log("Added candidate");
+          } catch(e) {
+            console.warn(e);
+          }
+        }
+      }
+    };
+
+    // create initial offer (join)
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    // send join + offer SDP
+    ws.send(JSON.stringify({ type: "join", room: room, displayName: nick, sdp: offer.sdp, sdpType: "offer" }));
+    log("sent join offer");
+
+    document.getElementById('connectBtn').disabled = true;
+    document.getElementById('leaveBtn').disabled = false;
+    document.getElementById('statsBtn').disabled = false;
+  };
+
+  ws.onclose = () => { log('WS closed'); };
+  ws.onerror = (e) => { log('WS err ' + JSON.stringify(e)); };
+};
+
+document.getElementById('leaveBtn').onclick = () => {
+  if (ws) {
+    ws.send(JSON.stringify({ type: "leave" }));
+    ws.close();
+  }
+  if (pc) {
+    pc.getSenders().forEach(s => pc.removeTrack(s));
+    pc.close();
+    pc = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  document.getElementById('connectBtn').disabled = false;
+  document.getElementById('leaveBtn').disabled = true;
+  document.getElementById('statsBtn').disabled = true;
+  if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+  log("left");
+};
+
+document.getElementById('statsBtn').onclick = () => {
+  if (!pc) return;
+  // show immediate stats and start periodic updates
+  const show = async () => {
+    try {
+      const stats = await pc.getStats();
+      stats.forEach(report => {
+        if (report.type === 'outbound-rtp' || report.type === 'inbound-rtp') {
+          log(JSON.stringify({ id: report.id, type: report.type, packets: report.packetsSent || report.packetsReceived, bytes: report.bytesSent || report.bytesReceived, jitter: report.jitter }, null, 0));
+        }
+      });
+    } catch(e) {
+      console.warn('getStats err', e);
+    }
+  };
+  // immediate
+  show();
+  // toggle periodic
+  if (!statsInterval) {
+    statsInterval = setInterval(show, 3000);
+    document.getElementById('statsBtn').textContent = 'Stop stats';
+  } else {
+    clearInterval(statsInterval); statsInterval = null;
+    document.getElementById('statsBtn').textContent = 'Show stats';
+  }
+};
+</script>
+</body>
+</html>
