@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Check Token</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    .box { border: 1px solid #ccc; padding: 10px; margin: 10px 0; background: #f5f5f5; }
+    button { padding: 8px 16px; margin: 5px; }
+    .warn { color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>localStorage Debug</h2>
+  
+  <div class="box">
+    <h3>Текущий токен:</h3>
+    <code id="token">-</code>
+  </div>
+
+  <div class="box">
+    <button onclick="clearToken()">🗑️ Очистить токен (localStorage.clear())</button>
+    <button onclick="location.reload()">🔄 Перезагрузить страницу</button>
+  </div>
+
+  <div class="box" id="warning" style="display:none;">
+    <p class="warn">⚠️ У вас есть сохраненный токен!</p>
+    <p>Это значит, что вы можете подключиться без повторной авторизации.</p>
+    <p>Нажмите кнопку выше, чтобы очистить.</p>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('vc_token');
+    const tokenEl = document.getElementById('token');
+    const warningEl = document.getElementById('warning');
+    
+    if (token) {
+      tokenEl.textContent = token.substring(0, 50) + '...';
+      warningEl.style.display = 'block';
+    } else {
+      tokenEl.textContent = '(нет токена)';
+    }
+    
+    function clearToken() {
+      localStorage.clear();
+      alert('localStorage очищен! Перезагружу страницу...');
+      location.reload();
+    }
+  </script>
+</body>
+</html>

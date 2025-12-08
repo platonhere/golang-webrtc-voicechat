@@ -20,16 +20,19 @@ type User struct {
 	outgoing map[string]*webrtc.TrackLocalStaticRTP
 	outMtx   sync.RWMutex
 
+	// serialise negotiations to avoid concurrent CreateOffer on the same PC
+	negotiationMtx sync.Mutex
+
 	closeOnce sync.Once
 }
 
-func NewUser(conn *websocket.Conn, room *Room) (*User, error) {
+func NewUser(conn *websocket.Conn, room *Room) *User {
 	u := &User{
 		ID:       uuid.New().String(),
 		Conn:     conn,
 		outgoing: make(map[string]*webrtc.TrackLocalStaticRTP),
 	}
-	return u, nil
+	return u
 }
 
 func (u *User) ReadPump() {
@@ -71,10 +74,16 @@ func (u *User) ReadPump() {
 					log.Println("received answer but PC is nil")
 					continue
 				}
+
+				// Создаём структуру SessionDescription из текста SDP
+				// Type = Answer говорит WebRTC, что это ответ на наш offer
+				// SDP = текст SDP, присланный клиентом, где описаны треки,кодеки,ICE
 				sdp := webrtc.SessionDescription{
 					Type: webrtc.SDPTypeAnswer,
 					SDP:  msg.SDP,
 				}
+
+				// Устанавливаем удалённое SDP, чтобы PeerConn знал треки, кодеки и ICE-кандидаты
 				if err := u.PC.SetRemoteDescription(sdp); err != nil {
 					log.Println("SetRemoteDescription answer:", err)
 				}
@@ -89,10 +98,9 @@ func (u *User) ReadPump() {
 
 func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 	cfg := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302"}},
-		},
+		ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}},
 	}
+
 	pc, err := webrtc.NewPeerConnection(cfg)
 	if err != nil {
 		return err
@@ -103,10 +111,15 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 		if c == nil {
 			return
 		}
+		// сериализация ICE-кандидата (адреса/порты/протоколы)
+		// превращаем ICE-кандидата из внутреннего go-объекта WebRTC в json
 		cj := c.ToJSON()
+		log.Printf("server ICE candidate: %+v\n", cj)
+		// подготавливаем WebSocket сообщение
 		m := SignalMessage{Type: "candidateFromServer"}
 		raw, _ := json.Marshal(cj)
 		m.Candidate = raw
+		// отправка инициатору сообщения (browser-клиенту)
 		_ = u.Conn.WriteJSON(m)
 	})
 
@@ -119,37 +132,53 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 				if other.ID == srcID {
 					return
 				}
+				if other.PC == nil {
+					log.Printf("skip adding track for user %s: PC not ready\n", other.ID)
+					return
+				}
 				cap := remoteTrack.Codec().RTPCodecCapability
+				// создаем локальный трек
 				localTrack, err := webrtc.NewTrackLocalStaticRTP(cap, "audio", srcID)
 				if err != nil {
 					log.Println("create track local:", err)
 					return
 				}
+				// записываем лок.трек в хеш-таблицу исходящих треков юзера отправ
 				other.outMtx.Lock()
 				other.outgoing[srcID] = localTrack
 				other.outMtx.Unlock()
 
+				// Добавляем трек в PeerConnection другого пользователя
 				if _, err := other.PC.AddTrack(localTrack); err != nil {
 					log.Println("other.PC.AddTrack error:", err)
 				}
+				// инициируем WebRTC-сигналингдля other (переговоры)
+				// (server создаст offer, отправит его по WS и получит от клиента answer)
 				go other.Negotiate()
 			})
 		}
 
 		for {
+			// читаем rtp-пакеты из трека отправителя
 			pkt, _, err := remoteTrack.ReadRTP()
 			if err != nil {
 				log.Println("remoteTrack.ReadRTP:", err)
 				return
 			}
+
+			// для всех юзеров комнаты
 			if u.room != nil {
 				u.room.IterateUsers(func(dest *User) {
 					if dest.ID == srcID {
 						return
 					}
+
+					// берем локальный трек получателя
 					dest.outMtx.RLock()
 					tr := dest.outgoing[srcID]
 					dest.outMtx.RUnlock()
+
+					// пишем rtp-пакеты в трек
 					if tr != nil {
 						if writeErr := tr.WriteRTP(pkt); writeErr != nil {
 							log.Println("WriteRTP error:", writeErr)
@@ -160,7 +189,12 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 		}
 	})
 
-	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offerSDP}
+	offer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  offerSDP,
+	}
+
+	// Устанавливаем удалённое SDP, чтобы PeerConn знал треки, кодеки и ICE-кандидаты
 	if err := pc.SetRemoteDescription(offer); err != nil {
 		return err
 	}
@@ -192,6 +226,9 @@ func (u *User) Negotiate() {
 	if u.PC == nil {
 		return
 	}
+	// serialize negotiations to avoid glare
+	u.negotiationMtx.Lock()
+	defer u.negotiationMtx.Unlock()
 	offer, err := u.PC.CreateOffer(nil)
 	if err != nil {
 		log.Println("CreateOffer:", err)

@@ -13,12 +13,12 @@ type Room struct {
 
 var (
 	rooms   = make(map[string]*Room)
-	roomsMu sync.RWMutex
+	roomsMtx sync.RWMutex
 )
 
 func GetOrCreateRoom(id string) *Room {
-	roomsMu.Lock()
-	defer roomsMu.Unlock()
+	roomsMtx.Lock()
+	defer roomsMtx.Unlock()
 	if r, ok := rooms[id]; ok {
 		return r
 	}
@@ -31,12 +31,24 @@ func GetOrCreateRoom(id string) *Room {
 	return r
 }
 
-func (r *Room) AddUser(u *User) {
+func (r *Room) HasUser(id string) bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	_, ok := r.users[id]
+	return ok
+}
+
+func (r *Room) AddUser(u *User) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
+	// double-check: make sure user isn't already there
+	if _, exists := r.users[u.ID]; exists {
+		return false
+	}
 	r.users[u.ID] = u
 	u.room = r
-	log.Printf("user %s joined room %s (now %d users)\n", u.ID, r.ID, len(r.users))
+	log.Printf("user \"%s\" joined room %s (now %d users)\n", u.DisplayName, r.ID, len(r.users))
+	return true
 }
 
 func (r *Room) RemoveUser(u *User) {
@@ -44,19 +56,26 @@ func (r *Room) RemoveUser(u *User) {
 	defer r.mtx.Unlock()
 	delete(r.users, u.ID)
 	u.room = nil
-	log.Printf("user %s left room %s (now %d users)\n", u.ID, r.ID, len(r.users))
+	log.Printf("user \"%s\" left room %s (now %d users)\n", u.DisplayName, r.ID, len(r.users))
 	if len(r.users) == 0 {
-		roomsMu.Lock()
+		roomsMtx.Lock()
 		delete(rooms, r.ID)
-		roomsMu.Unlock()
+		roomsMtx.Unlock()
 		log.Printf("room %s removed (empty)\n", r.ID)
 	}
 }
 
 func (r *Room) IterateUsers(fn func(u *User)) {
 	r.mtx.RLock()
-	defer r.mtx.RUnlock()
+	// создаем слайс, в который добав. юзеров из комнаты
+	users := make([]*User, 0, len(r.users))
 	for _, u := range r.users {
+		users = append(users, u)
+	}
+	r.mtx.RUnlock()
+
+	// для каждого выполняем фун-ю
+	for _, u := range users {
 		fn(u)
 	}
 }

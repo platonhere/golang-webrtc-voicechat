@@ -10,8 +10,16 @@
 </head>
 <body>
   <h2>VoiceChat MVP</h2>
-  <label>Room: <input id="room" value="room1"></label>
-  <label>Nick: <input id="nick" value="guest"></label>
+   <label>Room: <input id="room" value="room1"></label>
+   <div style="margin-top:8px">
+    <input id="regUser" placeholder="username">
+    <input id="regPass" type="password" placeholder="password">
+    <button id="regBtn">Register</button>
+    <input id="loginUser" placeholder="username">
+    <input id="loginPass" type="password" placeholder="password">
+    <button id="loginBtn">Login</button>
+    <span id="tokenDisplay" style="margin-left:8px; color: green; font-weight: bold;"></span>
+  </div>
   <button id="connectBtn">Connect (get mic)</button>
   <button id="leaveBtn" disabled>Leave</button>
   <button id="statsBtn" disabled>Show stats</button>
@@ -30,9 +38,8 @@ let statsInterval = null;
 
 document.getElementById('connectBtn').onclick = async () => {
   const room = document.getElementById('room').value || 'room1';
-  const nick = document.getElementById('nick').value || 'guest';
   ws = new WebSocket("ws://"+location.host+"/ws");
-  ws.onopen = async () => {
+    ws.onopen = async () => {
     log("WS opened");
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -92,11 +99,17 @@ document.getElementById('connectBtn').onclick = async () => {
       }
     };
 
-    // create initial offer (join)
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    // send join + offer SDP
-    ws.send(JSON.stringify({ type: "join", room: room, displayName: nick, sdp: offer.sdp, sdpType: "offer" }));
+  // create initial offer (join)
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+    // send join + offer SDP, include token (display_name comes from server DB profile)
+  const token = sessionStorage.getItem('vc_token');
+    if (!token) {
+      log("ERROR: you must login first");
+      ws.close();
+      return;
+    }
+    ws.send(JSON.stringify({ type: "join", room: room, sdp: offer.sdp, sdpType: "offer", token: token }));
     log("sent join offer");
 
     document.getElementById('connectBtn').disabled = true;
@@ -106,6 +119,35 @@ document.getElementById('connectBtn').onclick = async () => {
 
   ws.onclose = () => { log('WS closed'); };
   ws.onerror = (e) => { log('WS err ' + JSON.stringify(e)); };
+};
+
+document.getElementById('regBtn').onclick = async () => {
+  const username = document.getElementById('regUser').value;
+  const password = document.getElementById('regPass').value;
+  try {
+    const res = await fetch('/api/register', { method: 'POST', body: JSON.stringify({ username, password }), headers: { 'Content-Type':'application/json' } });
+    if (res.status === 201) {
+      log('registered');
+    } else {
+      log('register failed');
+    }
+  } catch(e){ log('reg err '+e) }
+};
+
+document.getElementById('loginBtn').onclick = async () => {
+  const username = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
+  try {
+    const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ username, password }), headers: { 'Content-Type':'application/json' } });
+    const j = await res.json();
+    if (j.token) {
+      sessionStorage.setItem('vc_token', j.token);
+      document.getElementById('tokenDisplay').textContent = '✅ logged in';
+      log('✅ login ok');
+    } else {
+      log('❌ login failed');
+    }
+  } catch(e){ log('login err '+e) }
 };
 
 document.getElementById('leaveBtn').onclick = () => {
