@@ -96,6 +96,7 @@ func Authenticate(ctx context.Context, username, password string) (*User, error)
 		// пароль не совпадает, возвращаем nil без ошибки
 		return nil, nil
 	}
+	// если пароль совпадает, заполняем поле структуры User
 	u.Username = username
 	// возвращаем данные пользователя при успешной аутентификации
 	return &u, nil

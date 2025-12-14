@@ -151,24 +151,24 @@
     <header>
       <h1>Проверка токена</h1>
     </header>
-
+  
     <div class="card">
       <div class="card-title">Текущий токен</div>
-      <code id="token">-</code>
-    </div>
+    <code id="token">-</code>
+  </div>
 
     <div class="card">
       <div class="card-title">Действия</div>
       <button onclick="clearToken()">🗑️ Очистить токен</button>
       <button onclick="location.reload()">🔄 Перезагрузить</button>
       <button class="btn-danger" onclick="clearSessionToken()">🗑️ Очистить sessionStorage</button>
-    </div>
+  </div>
 
     <div class="card" id="warning" style="display:none;">
       <div class="card-title">⚠️ Внимание</div>
       <div class="warning-box">
         <p><strong>У вас есть сохраненный токен!</strong></p>
-        <p>Это значит, что вы можете подключиться без повторной авторизации.</p>
+    <p>Это значит, что вы можете подключиться без повторной авторизации.</p>
         <p>Нажмите кнопку выше, чтобы очистить токен.</p>
       </div>
     </div>
