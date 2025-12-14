@@ -1,34 +1,382 @@
 <!doctype html>
-<html>
+<html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>VoiceChat MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceChat</title>
   <style>
-    body { font-family: Arial; padding: 20px; }
-    #log { white-space: pre-wrap; border: 1px solid #ddd; padding: 8px; height: 200px; overflow:auto;}
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #151520;
+      --bg-tertiary: #1e1e2e;
+      --bg-hover: #252538;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --text-primary: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --success: #10b981;
+      --error: #ef4444;
+      --border: #27272a;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      font-weight: 400;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 6px var(--shadow);
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 8px 16px var(--shadow);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: var(--bg-hover);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    button {
+      padding: 0.875rem 1.5rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--bg-hover);
+      border-color: var(--accent);
+    }
+
+    .btn-danger {
+      background: var(--error);
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #dc2626;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-top: 1rem;
+    }
+
+    .status-badge.success {
+      color: var(--success);
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    #tokenDisplay {
+      font-weight: 500;
+    }
+
+    #log {
+      white-space: pre-wrap;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    #log::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #log::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+      border-radius: 4px;
+    }
+
+    #log::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    #log::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+
+    #audios {
+      display: none;
+    }
+
+    .auth-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .auth-section {
+        grid-template-columns: 1fr;
+      }
+
+      .input-row {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        padding: 1.5rem;
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   </style>
 </head>
 <body>
-  <h2>VoiceChat MVP</h2>
-   <label>Room: <input id="room" value="room1"></label>
-   <div style="margin-top:8px">
-    <input id="regUser" placeholder="username">
-    <input id="regPass" type="password" placeholder="password">
-    <button id="regBtn">Register</button>
-    <input id="loginUser" placeholder="username">
-    <input id="loginPass" type="password" placeholder="password">
-    <button id="loginBtn">Login</button>
-    <span id="tokenDisplay" style="margin-left:8px; color: green; font-weight: bold;"></span>
+  <div class="container">
+    <header>
+      <h1>VoiceChat</h1>
+      <p class="subtitle">Современный голосовой чат с WebRTC</p>
+    </header>
+
+    <div class="card fade-in">
+      <div class="card-title">Авторизация</div>
+      <div class="auth-section">
+        <div>
+          <div class="form-group">
+            <label>Имя пользователя</label>
+            <input id="regUser" type="text" placeholder="Введите имя пользователя">
+          </div>
+          <div class="form-group">
+            <label>Пароль</label>
+            <input id="regPass" type="password" placeholder="Введите пароль">
+          </div>
+          <button id="regBtn">Зарегистрироваться</button>
+        </div>
+        <div>
+          <div class="form-group">
+            <label>Имя пользователя</label>
+            <input id="loginUser" type="text" placeholder="Введите имя пользователя">
+          </div>
+          <div class="form-group">
+            <label>Пароль</label>
+            <input id="loginPass" type="password" placeholder="Введите пароль">
+          </div>
+          <button id="loginBtn">Войти</button>
+        </div>
+      </div>
+      <div id="tokenDisplay" class="status-badge"></div>
+    </div>
+
+    <div class="card fade-in">
+      <div class="card-title">Подключение</div>
+      <div class="form-group">
+        <label>Комната</label>
+        <input id="room" type="text" value="room1" placeholder="Название комнаты">
+      </div>
+      <div class="btn-group">
+        <button id="connectBtn">Подключиться</button>
+        <button id="leaveBtn" class="btn-danger" disabled>Покинуть</button>
+        <button id="statsBtn" class="btn-secondary" disabled>Статистика</button>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <div class="card-title">Лог событий</div>
+      <div id="log"></div>
+    </div>
+
+    <div id="audios"></div>
   </div>
-  <button id="connectBtn">Connect (get mic)</button>
-  <button id="leaveBtn" disabled>Leave</button>
-  <button id="statsBtn" disabled>Show stats</button>
-  <div id="log"></div>
-  <div id="audios"></div>
 
 <script>
 const logEl = document.getElementById('log')
-function log(s){ logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight }
+const tokenDisplay = document.getElementById('tokenDisplay')
+
+function log(s) { 
+  const timestamp = new Date().toLocaleTimeString('ru-RU');
+  logEl.textContent += `[${timestamp}] ${s}\n`; 
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function updateTokenDisplay(text, isSuccess = false) {
+  tokenDisplay.textContent = text;
+  if (isSuccess) {
+    tokenDisplay.classList.add('success');
+  } else {
+    tokenDisplay.classList.remove('success');
+  }
+}
 
 let pc = null;
 let ws = null;
@@ -39,21 +387,24 @@ let statsInterval = null;
 document.getElementById('connectBtn').onclick = async () => {
   const room = document.getElementById('room').value || 'room1';
   ws = new WebSocket("ws://"+location.host+"/ws");
+  
     ws.onopen = async () => {
-    log("WS opened");
+    log("🔌 WebSocket подключен");
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      log("🎤 Доступ к микрофону получен");
     } catch(e) {
-      log("getUserMedia failed: " + e);
+      log("❌ Ошибка доступа к микрофону: " + e.message);
+      ws.close();
       return;
     }
+    
     pc = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
 
-    // onincoming remote track -> create audio element
     pc.ontrack = (ev) => {
-      log("ontrack: " + ev.streams.length);
+      log(`🎵 Получен аудио поток (${ev.streams.length} потоков)`);
       const audio = document.createElement('audio');
       audio.autoplay = true;
       audio.srcObject = ev.streams[0];
@@ -65,33 +416,30 @@ document.getElementById('connectBtn').onclick = async () => {
       ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
     };
 
-    // attach local mic
     for (const t of localStream.getTracks()){
       pc.addTrack(t, localStream);
     }
 
     ws.onmessage = async (ev) => {
       const msg = JSON.parse(ev.data);
-      log("WS msg: " + msg.type);
+      log(`📨 Сообщение: ${msg.type}`);
+      
       if (msg.type === "answer") {
         const desc = { type: "answer", sdp: msg.sdp };
         await pc.setRemoteDescription(desc);
-        log("Set remote answer");
+        log("✅ Установлено удаленное описание (answer)");
       } else if (msg.type === "offer") {
-        // server requests renegotiation: server created offer -> we answer
         const offer = { type: "offer", sdp: msg.sdp };
         await pc.setRemoteDescription(offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        // wait for ICE gathering (optional) - we just send answer
         ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp, sdpType: "answer" }));
-        log("Answered server offer");
+        log("✅ Отправлен ответ на предложение сервера");
       } else if (msg.type === "candidateFromServer" || msg.type === "candidate") {
-        // add candidate
         if (msg.candidate) {
           try {
             await pc.addIceCandidate(msg.candidate);
-            log("Added candidate");
+            log("✅ Добавлен ICE кандидат");
           } catch(e) {
             console.warn(e);
           }
@@ -99,55 +447,96 @@ document.getElementById('connectBtn').onclick = async () => {
       }
     };
 
-  // create initial offer (join)
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-    // send join + offer SDP, include token (display_name comes from server DB profile)
+    
   const token = sessionStorage.getItem('vc_token');
     if (!token) {
-      log("ERROR: you must login first");
+      log("❌ ОШИБКА: необходимо сначала войти в систему");
       ws.close();
       return;
     }
+    
     ws.send(JSON.stringify({ type: "join", room: room, sdp: offer.sdp, sdpType: "offer", token: token }));
-    log("sent join offer");
+    log(`📤 Отправлен запрос на подключение к комнате "${room}"`);
 
     document.getElementById('connectBtn').disabled = true;
     document.getElementById('leaveBtn').disabled = false;
     document.getElementById('statsBtn').disabled = false;
   };
 
-  ws.onclose = () => { log('WS closed'); };
-  ws.onerror = (e) => { log('WS err ' + JSON.stringify(e)); };
+  ws.onclose = () => { 
+    log('🔌 WebSocket закрыт');
+    document.getElementById('connectBtn').disabled = false;
+    document.getElementById('leaveBtn').disabled = true;
+    document.getElementById('statsBtn').disabled = true;
+  };
+  
+  ws.onerror = (e) => { 
+    log('❌ Ошибка WebSocket: ' + JSON.stringify(e));
+  };
 };
 
 document.getElementById('regBtn').onclick = async () => {
-  const username = document.getElementById('regUser').value;
+  const username = document.getElementById('regUser').value.trim();
   const password = document.getElementById('regPass').value;
+  
+  if (!username || !password) {
+    log('⚠️ Заполните все поля');
+    return;
+  }
+  
   try {
-    const res = await fetch('/api/register', { method: 'POST', body: JSON.stringify({ username, password }), headers: { 'Content-Type':'application/json' } });
+    const res = await fetch('/api/register', { 
+      method: 'POST', 
+      body: JSON.stringify({ username, password }), 
+      headers: { 'Content-Type':'application/json' } 
+    });
+    
     if (res.status === 201) {
-      log('registered');
+      log('✅ Регистрация успешна');
+      document.getElementById('regUser').value = '';
+      document.getElementById('regPass').value = '';
     } else {
-      log('register failed');
+      const text = await res.text();
+      log('❌ Ошибка регистрации: ' + (text || 'неизвестная ошибка'));
     }
-  } catch(e){ log('reg err '+e) }
+  } catch(e) { 
+    log('❌ Ошибка регистрации: ' + e.message);
+  }
 };
 
 document.getElementById('loginBtn').onclick = async () => {
-  const username = document.getElementById('loginUser').value;
+  const username = document.getElementById('loginUser').value.trim();
   const password = document.getElementById('loginPass').value;
+  
+  if (!username || !password) {
+    log('⚠️ Заполните все поля');
+    return;
+  }
+  
   try {
-    const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ username, password }), headers: { 'Content-Type':'application/json' } });
+    const res = await fetch('/api/login', { 
+      method: 'POST', 
+      body: JSON.stringify({ username, password }), 
+      headers: { 'Content-Type':'application/json' } 
+    });
+    
     const j = await res.json();
     if (j.token) {
       sessionStorage.setItem('vc_token', j.token);
-      document.getElementById('tokenDisplay').textContent = '✅ logged in';
-      log('✅ login ok');
+      updateTokenDisplay('✅ Выполнен вход', true);
+      log('✅ Вход выполнен успешно');
+      document.getElementById('loginUser').value = '';
+      document.getElementById('loginPass').value = '';
     } else {
-      log('❌ login failed');
+      updateTokenDisplay('❌ Ошибка входа', false);
+      log('❌ Ошибка входа: неверные данные');
     }
-  } catch(e){ log('login err '+e) }
+  } catch(e) { 
+    updateTokenDisplay('❌ Ошибка входа', false);
+    log('❌ Ошибка входа: ' + e.message);
+  }
 };
 
 document.getElementById('leaveBtn').onclick = () => {
@@ -167,36 +556,64 @@ document.getElementById('leaveBtn').onclick = () => {
   document.getElementById('connectBtn').disabled = false;
   document.getElementById('leaveBtn').disabled = true;
   document.getElementById('statsBtn').disabled = true;
-  if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
-  log("left");
+  if (statsInterval) { 
+    clearInterval(statsInterval); 
+    statsInterval = null;
+    document.getElementById('statsBtn').textContent = 'Статистика';
+  }
+  log("👋 Покинул комнату");
 };
 
 document.getElementById('statsBtn').onclick = () => {
   if (!pc) return;
-  // show immediate stats and start periodic updates
+  
   const show = async () => {
     try {
       const stats = await pc.getStats();
+      let hasStats = false;
       stats.forEach(report => {
         if (report.type === 'outbound-rtp' || report.type === 'inbound-rtp') {
-          log(JSON.stringify({ id: report.id, type: report.type, packets: report.packetsSent || report.packetsReceived, bytes: report.bytesSent || report.bytesReceived, jitter: report.jitter }, null, 0));
+          hasStats = true;
+          const direction = report.type === 'outbound-rtp' ? 'Исходящий' : 'Входящий';
+          const packets = report.packetsSent || report.packetsReceived || 0;
+          const bytes = report.bytesSent || report.bytesReceived || 0;
+          const jitter = report.jitter || 0;
+          log(`${direction}: пакетов=${packets}, байт=${bytes}, джиттер=${jitter.toFixed(2)}`);
         }
       });
+      if (!hasStats) {
+        log('📊 Статистика пока недоступна');
+      }
     } catch(e) {
-      console.warn('getStats err', e);
+      log('❌ Ошибка получения статистики: ' + e.message);
     }
   };
-  // immediate
+  
   show();
-  // toggle periodic
+  
   if (!statsInterval) {
     statsInterval = setInterval(show, 3000);
-    document.getElementById('statsBtn').textContent = 'Stop stats';
+    document.getElementById('statsBtn').textContent = 'Остановить статистику';
+    log('📊 Статистика включена (обновление каждые 3 сек)');
   } else {
-    clearInterval(statsInterval); statsInterval = null;
-    document.getElementById('statsBtn').textContent = 'Show stats';
+    clearInterval(statsInterval); 
+    statsInterval = null;
+    document.getElementById('statsBtn').textContent = 'Статистика';
+    log('📊 Статистика остановлена');
   }
 };
+
+// Проверка сохраненного токена при загрузке
+window.addEventListener('DOMContentLoaded', () => {
+  const token = sessionStorage.getItem('vc_token');
+  if (token) {
+    updateTokenDisplay('✅ Токен найден (вход выполнен ранее)', true);
+    log('ℹ️ Найден сохраненный токен');
+  } else {
+    updateTokenDisplay('⚠️ Необходимо войти в систему', false);
+  }
+  log('🚀 Интерфейс загружен');
+});
 </script>
 </body>
 </html>

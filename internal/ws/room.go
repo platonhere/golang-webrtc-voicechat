@@ -12,7 +12,7 @@ type Room struct {
 }
 
 var (
-	rooms   = make(map[string]*Room)
+	rooms    = make(map[string]*Room)
 	roomsMtx sync.RWMutex
 )
 
