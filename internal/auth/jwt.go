@@ -34,14 +34,14 @@ func GenerateToken(userID, username string, ttl time.Duration) (string, error) {
 
 func ParseToken(tokenStr string) (userID string, username string, err error) {
 	// парсим jwt токен, представленный в виде строки из tokenStr
-	// Разбираем header и payload (claims) и проверяем подпись с использованием callback-функции, которая возвр. jwtSecret
+	// разбираем header и payload (claims), проверяем подпись с использованием callback-функции, которая возвр. jwtSecret
 	// проверка токена с помощью jwtSecret происходит внутри библеатеки jwt, в jwt.Parse
 	tok, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 		// проверяем, что алгоритм подписи HMAC (SHA-256)
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrTokenUnverifiable
 		}
-		// Возвращаем секретный ключ для проверки подписи токена (на уровне библиотеки jwt)
+		// возвращаем секретный ключ для проверки (на уровне библиотеки jwt) подписи токена
 		return jwtSecret, nil
 	})
 	if err != nil {

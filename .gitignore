@@ -4,3 +4,7 @@ bin/
 *.test
 vendor/
 FIX.txt
+
+# Local debug page: токен для отладки в sessionStorage
+# Этот файл полезен в деве, но не должен попадать в коммиты.
+/static/check_token.html

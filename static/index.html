@@ -447,6 +447,14 @@ document.getElementById('connectBtn').onclick = async () => {
       }
     };
 
+  /*
+    Точка интеграции: initial join (WebRTC offer + token)
+    - Создаём локальный SDP-offer
+    - Берём токен из sessionStorage (ключ 'vc_token')
+    - Отправляем по WebSocket сообщение join:
+      { type: "join", room, sdp: offer.sdp, sdpType: "offer", token }
+    Сервер ожидает этот формат и валидирует токен (JWT).
+  */
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
     
@@ -487,6 +495,12 @@ document.getElementById('regBtn').onclick = async () => {
   }
   
   try {
+    /*
+      Точка интеграции: регистрация
+      - POST /api/register
+      - тело: { username, password }
+      - успешный ответ: 201 Created
+    */
     const res = await fetch('/api/register', { 
       method: 'POST', 
       body: JSON.stringify({ username, password }), 
@@ -516,6 +530,14 @@ document.getElementById('loginBtn').onclick = async () => {
   }
   
   try {
+    /*
+      Точка интеграции: логин
+      - POST /api/login
+      - тело: { username, password }
+      - ответ: { token }
+      - токен сохраняется в sessionStorage под ключом 'vc_token' и
+        используется при отправке join по WebSocket
+    */
     const res = await fetch('/api/login', { 
       method: 'POST', 
       body: JSON.stringify({ username, password }), 
@@ -605,6 +627,11 @@ document.getElementById('statsBtn').onclick = () => {
 
 // Проверка сохраненного токена при загрузке
 window.addEventListener('DOMContentLoaded', () => {
+  /*
+    Проверка токена при загрузке страницы
+    - Если токен найден в sessionStorage, помечаем UI как авторизованный
+    - Заметьте: token хранится в sessionStorage (не между вкладками)
+  */
   const token = sessionStorage.getItem('vc_token');
   if (token) {
     updateTokenDisplay('✅ Токен найден (вход выполнен ранее)', true);
