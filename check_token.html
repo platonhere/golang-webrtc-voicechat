@@ -1,0 +1,202 @@
+<!-- <!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Проверка токена - VoiceChat</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #151520;
+      --bg-tertiary: #1e1e2e;
+      --bg-hover: #252538;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --text-primary: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+      --border: #27272a;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 6px var(--shadow);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    code {
+      display: block;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      word-break: break-all;
+      margin-top: 0.5rem;
+    }
+
+    button {
+      padding: 0.875rem 1.5rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      margin-right: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    button:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-danger {
+      background: var(--error);
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .warning-box {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--warning);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+      color: var(--warning);
+    }
+
+    .warning-box p {
+      margin-bottom: 0.5rem;
+    }
+
+    .warning-box p:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Проверка токена</h1>
+    </header>
+  
+    <div class="card">
+      <div class="card-title">Текущий токен</div>
+    <code id="token">-</code>
+  </div>
+
+    <div class="card">
+      <div class="card-title">Действия</div>
+      <button onclick="clearToken()">🗑️ Очистить токен</button>
+      <button onclick="location.reload()">🔄 Перезагрузить</button>
+      <button class="btn-danger" onclick="clearSessionToken()">🗑️ Очистить sessionStorage</button>
+  </div>
+
+    <div class="card" id="warning" style="display:none;">
+      <div class="card-title">⚠️ Внимание</div>
+      <div class="warning-box">
+        <p><strong>У вас есть сохраненный токен!</strong></p>
+    <p>Это значит, что вы можете подключиться без повторной авторизации.</p>
+        <p>Нажмите кнопку выше, чтобы очистить токен.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = sessionStorage.getItem('vc_token');
+    const tokenEl = document.getElementById('token');
+    const warningEl = document.getElementById('warning');
+    
+    if (token) {
+      tokenEl.textContent = token.substring(0, 80) + '...';
+      warningEl.style.display = 'block';
+    } else {
+      tokenEl.textContent = '(токен не найден в sessionStorage)';
+    }
+    
+    function clearToken() {
+      sessionStorage.removeItem('vc_token');
+      alert('Токен из sessionStorage очищен! Перезагружу страницу...');
+      location.reload();
+    }
+
+    function clearSessionToken() {
+      sessionStorage.clear();
+      alert('sessionStorage полностью очищен! Перезагружу страницу...');
+      location.reload();
+    }
+  </script>
+</body>
+</html> -->
