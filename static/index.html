@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VoiceChat</title>
+  <title>VoiceChat Conference</title>
   <style>
     * {
       margin: 0;
@@ -56,7 +56,7 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
       margin-bottom: 0.5rem;
-      letter-spacing: -0.02em;
+      letter-spacing: 0;
     }
 
     .subtitle {
@@ -68,7 +68,7 @@
     .card {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 8px;
       padding: 2rem;
       margin-bottom: 1.5rem;
       box-shadow: 0 4px 6px var(--shadow);
@@ -254,7 +254,99 @@
       background: var(--accent);
     }
 
-    #audios {
+    .media-status {
+      margin-top: 1rem;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    .video-tile {
+      position: relative;
+      overflow: hidden;
+      min-height: 180px;
+      aspect-ratio: 16 / 9;
+      background: #050509;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .video-tile video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      background: #050509;
+    }
+
+    .video-tile.local video {
+      transform: scaleX(-1);
+    }
+
+    .video-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-muted);
+      background: var(--bg-tertiary);
+      font-size: 0.95rem;
+    }
+
+    .video-tile.has-video .video-placeholder {
+      display: none;
+    }
+
+    .video-tile.audio-only video {
+      opacity: 0;
+    }
+
+    .video-label,
+    .video-state {
+      position: absolute;
+      z-index: 1;
+      left: 0.75rem;
+      right: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+      pointer-events: none;
+    }
+
+    .video-label {
+      bottom: 0.75rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .video-state {
+      top: 0.75rem;
+      justify-content: flex-start;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    .empty-state {
+      margin-top: 1rem;
+      padding: 0.875rem 1rem;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      text-align: center;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .empty-state[hidden] {
       display: none;
     }
 
@@ -284,6 +376,10 @@
       .card {
         padding: 1.5rem;
       }
+
+      .video-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .fade-in {
@@ -305,8 +401,8 @@
 <body>
   <div class="container">
     <header>
-      <h1>VoiceChat</h1>
-      <p class="subtitle">Голосовой чат с WebRTC</p>
+      <h1>VoiceChat Conference</h1>
+      <p class="subtitle">Голосовые и видеоконференции на WebRTC</p>
     </header>
 
     <div class="card fade-in">
@@ -347,8 +443,24 @@
       <div class="btn-group">
         <button id="connectBtn">Подключиться</button>
         <button id="leaveBtn" class="btn-danger" disabled>Покинуть</button>
+        <button id="micBtn" class="btn-secondary" disabled>Микрофон</button>
+        <button id="cameraBtn" class="btn-secondary" disabled>Камера</button>
         <button id="statsBtn" class="btn-secondary" disabled>Статистика</button>
       </div>
+      <div id="mediaStatus" class="status-badge media-status">Камера и микрофон не подключены</div>
+    </div>
+
+    <div class="card fade-in">
+      <div class="card-title">Конференция</div>
+      <div id="videoGrid" class="video-grid">
+        <div id="localTile" class="video-tile local">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <div id="localPlaceholder" class="video-placeholder">Камера не подключена</div>
+          <div class="video-state">Вы</div>
+          <div class="video-label">Вы</div>
+        </div>
+      </div>
+      <div id="remoteEmpty" class="empty-state">Ожидаем других участников</div>
     </div>
 
     <div class="card fade-in">
@@ -356,12 +468,22 @@
       <div id="log"></div>
     </div>
 
-    <div id="audios"></div>
   </div>
 
 <script>
 const logEl = document.getElementById('log')
 const tokenDisplay = document.getElementById('tokenDisplay')
+const mediaStatus = document.getElementById('mediaStatus')
+const connectBtn = document.getElementById('connectBtn')
+const leaveBtn = document.getElementById('leaveBtn')
+const statsBtn = document.getElementById('statsBtn')
+const micBtn = document.getElementById('micBtn')
+const cameraBtn = document.getElementById('cameraBtn')
+const videoGrid = document.getElementById('videoGrid')
+const remoteEmpty = document.getElementById('remoteEmpty')
+const localTile = document.getElementById('localTile')
+const localVideo = document.getElementById('localVideo')
+const localPlaceholder = document.getElementById('localPlaceholder')
 
 function log(s) { 
   const timestamp = new Date().toLocaleTimeString('ru-RU');
@@ -369,120 +491,358 @@ function log(s) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-function updateTokenDisplay(text, isSuccess = false) {
-  tokenDisplay.textContent = text;
+function updateBadge(el, text, isSuccess = false) {
+  el.textContent = text;
   if (isSuccess) {
-    tokenDisplay.classList.add('success');
+    el.classList.add('success');
   } else {
-    tokenDisplay.classList.remove('success');
+    el.classList.remove('success');
   }
+}
+
+function updateTokenDisplay(text, isSuccess = false) {
+  updateBadge(tokenDisplay, text, isSuccess);
+}
+
+function updateMediaStatus(text, isSuccess = false) {
+  updateBadge(mediaStatus, text, isSuccess);
 }
 
 let pc = null;
 let ws = null;
 let localStream = null;
-let userId = null;
 let statsInterval = null;
+const remoteTiles = new Map();
+const pendingRemoteCandidates = [];
 
-document.getElementById('connectBtn').onclick = async () => {
-  const room = document.getElementById('room').value || 'room1';
-  ws = new WebSocket("ws://"+location.host+"/ws");
-  
-    ws.onopen = async () => {
-    log("🔌 WebSocket подключен");
+function getLiveTrack(kind) {
+  if (!localStream) return null;
+  return localStream.getTracks().find(t => t.kind === kind && t.readyState === 'live') || null;
+}
+
+function updateLocalTile() {
+  const videoTrack = getLiveTrack('video');
+  const hasVideo = Boolean(videoTrack && videoTrack.enabled);
+  localTile.classList.toggle('has-video', hasVideo);
+  localTile.classList.toggle('audio-only', Boolean(localStream && !hasVideo));
+  localPlaceholder.textContent = localStream ? 'Видео выключено' : 'Камера не подключена';
+}
+
+function updateMediaButtons() {
+  const audioTrack = getLiveTrack('audio');
+  const videoTrack = getLiveTrack('video');
+
+  micBtn.disabled = !audioTrack;
+  cameraBtn.disabled = !videoTrack;
+  micBtn.textContent = audioTrack ? (audioTrack.enabled ? 'Микрофон вкл' : 'Микрофон выкл') : 'Микрофон';
+  cameraBtn.textContent = videoTrack ? (videoTrack.enabled ? 'Камера вкл' : 'Камера выкл') : 'Камера';
+  updateLocalTile();
+}
+
+function stopStats() {
+  if (!statsInterval) return;
+  clearInterval(statsInterval);
+  statsInterval = null;
+  statsBtn.textContent = 'Статистика';
+}
+
+function updateRemoteEmpty() {
+  remoteEmpty.hidden = remoteTiles.size > 0;
+}
+
+function clearRemoteTiles() {
+  remoteTiles.forEach(({ tile, video }) => {
+    video.srcObject = null;
+    tile.remove();
+  });
+  remoteTiles.clear();
+  updateRemoteEmpty();
+}
+
+function createRemoteTile(key) {
+  const tile = document.createElement('div');
+  tile.className = 'video-tile';
+  tile.dataset.streamId = key;
+
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+
+  const placeholder = document.createElement('div');
+  placeholder.className = 'video-placeholder';
+  placeholder.textContent = 'Поток подключается';
+
+  const state = document.createElement('div');
+  state.className = 'video-state';
+  state.textContent = 'Медиа';
+
+  const label = document.createElement('div');
+  label.className = 'video-label';
+  label.textContent = 'Участник';
+
+  tile.append(video, placeholder, state, label);
+  videoGrid.appendChild(tile);
+
+  return { tile, video, placeholder, state, label, stream: null };
+}
+
+function updateRemoteTile(item) {
+  const stream = item.stream;
+  const hasVideo = Boolean(stream && stream.getVideoTracks().some(t => t.readyState !== 'ended'));
+  const hasAudio = Boolean(stream && stream.getAudioTracks().some(t => t.readyState !== 'ended'));
+
+  item.tile.classList.toggle('has-video', hasVideo);
+  item.tile.classList.toggle('audio-only', !hasVideo);
+  item.placeholder.textContent = hasAudio ? 'Участник без видео' : 'Поток подключается';
+  item.state.textContent = hasVideo ? 'Видео' : 'Аудио';
+}
+
+function attachRemoteTrack(stream, track) {
+  const mediaStream = stream || new MediaStream([track]);
+  if (!mediaStream.getTracks().some(t => t.id === track.id)) {
+    mediaStream.addTrack(track);
+  }
+
+  const key = mediaStream.id || track.id;
+  let item = remoteTiles.get(key);
+  if (!item) {
+    item = createRemoteTile(key);
+    remoteTiles.set(key, item);
+  }
+
+  item.stream = mediaStream;
+  if (item.video.srcObject !== mediaStream) {
+    item.video.srcObject = mediaStream;
+    item.video.play().catch(() => {});
+  }
+
+  track.onunmute = () => updateRemoteTile(item);
+  track.onended = () => {
+    updateRemoteTile(item);
+    if (mediaStream.getTracks().every(t => t.readyState === 'ended')) {
+      item.video.srcObject = null;
+      item.tile.remove();
+      remoteTiles.delete(key);
+      updateRemoteEmpty();
+    }
+  };
+
+  updateRemoteTile(item);
+  updateRemoteEmpty();
+}
+
+async function getConferenceMedia() {
+  const audio = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
+  };
+  const video = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, max: 30 }
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+    log('🎥 Доступ к камере и микрофону получен');
+    updateMediaStatus('Камера и микрофон активны', true);
+    return stream;
+  } catch (videoError) {
+    log('⚠️ Камера недоступна, пробуем подключить только микрофон: ' + videoError.message);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+    log('🎤 Доступ к микрофону получен');
+    updateMediaStatus('Подключен только микрофон', true);
+    return stream;
+  }
+}
+
+function attachLocalStream(stream) {
+  localVideo.srcObject = stream;
+  localVideo.play().catch(() => {});
+  updateMediaButtons();
+}
+
+function sendSignal(payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+async function flushPendingRemoteCandidates() {
+  if (!pc || !pc.remoteDescription) return;
+
+  while (pendingRemoteCandidates.length > 0) {
+    const candidate = pendingRemoteCandidates.shift();
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      log("🎤 Доступ к микрофону получен");
-    } catch(e) {
-      log("❌ Ошибка доступа к микрофону: " + e.message);
-      ws.close();
-      return;
+      await pc.addIceCandidate(candidate);
+      log('✅ Добавлен ICE кандидат');
+    } catch (e) {
+      log('❌ Ошибка ICE кандидата: ' + e.message);
     }
-    
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
+  }
+}
 
-    pc.ontrack = (ev) => {
-      log(`🎵 Получен аудио поток (${ev.streams.length} потоков)`);
-      const audio = document.createElement('audio');
-      audio.autoplay = true;
-      audio.srcObject = ev.streams[0];
-      document.getElementById('audios').appendChild(audio);
-    };
+async function handleSignalMessage(ev) {
+  const msg = JSON.parse(ev.data);
+  log(`📨 Сообщение: ${msg.type}`);
+  if (!pc) return;
 
-    pc.onicecandidate = (e) => {
-      if (!e.candidate) return;
-      ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
-    };
-
-    for (const t of localStream.getTracks()){
-      pc.addTrack(t, localStream);
-    }
-
-    ws.onmessage = async (ev) => {
-      const msg = JSON.parse(ev.data);
-      log(`📨 Сообщение: ${msg.type}`);
-      
-      if (msg.type === "answer") {
-        const desc = { type: "answer", sdp: msg.sdp };
-        await pc.setRemoteDescription(desc);
-        log("✅ Установлено удаленное описание (answer)");
-      } else if (msg.type === "offer") {
-        const offer = { type: "offer", sdp: msg.sdp };
-        await pc.setRemoteDescription(offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp, sdpType: "answer" }));
-        log("✅ Отправлен ответ на предложение сервера");
-      } else if (msg.type === "candidateFromServer" || msg.type === "candidate") {
-        if (msg.candidate) {
-          try {
-            await pc.addIceCandidate(msg.candidate);
-            log("✅ Добавлен ICE кандидат");
-          } catch(e) {
-            console.warn(e);
-          }
+  if (msg.type === 'answer') {
+    const desc = { type: 'answer', sdp: msg.sdp };
+    await pc.setRemoteDescription(desc);
+    log('✅ Установлено удаленное описание (answer)');
+    await flushPendingRemoteCandidates();
+  } else if (msg.type === 'offer') {
+    const offer = { type: 'offer', sdp: msg.sdp };
+    await pc.setRemoteDescription(offer);
+    await flushPendingRemoteCandidates();
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    sendSignal({ type: 'answer', sdp: answer.sdp, sdpType: 'answer' });
+    log('✅ Отправлен ответ на предложение сервера');
+  } else if (msg.type === 'candidateFromServer' || msg.type === 'candidate') {
+    if (msg.candidate) {
+      if (!pc.remoteDescription) {
+        pendingRemoteCandidates.push(msg.candidate);
+        log('⏳ ICE кандидат поставлен в очередь');
+      } else {
+        try {
+          await pc.addIceCandidate(msg.candidate);
+          log('✅ Добавлен ICE кандидат');
+        } catch(e) {
+          log('❌ Ошибка ICE кандидата: ' + e.message);
         }
+      }
+    }
+  }
+}
+
+function createPeerConnection() {
+  const connection = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  connection.ontrack = (ev) => {
+    const stream = ev.streams[0] || new MediaStream([ev.track]);
+    attachRemoteTrack(stream, ev.track);
+    log(`🎬 Получен ${ev.track.kind === 'video' ? 'видео' : 'аудио'} поток`);
+  };
+
+  connection.onicecandidate = (e) => {
+    if (!e.candidate) return;
+    sendSignal({ type: 'candidate', candidate: e.candidate });
+  };
+
+  connection.onconnectionstatechange = () => {
+    log(`🔁 WebRTC состояние: ${connection.connectionState}`);
+  };
+
+  connection.oniceconnectionstatechange = () => {
+    log(`🧊 ICE состояние: ${connection.iceConnectionState}`);
+  };
+
+  connection.onsignalingstatechange = () => {
+    log(`🛰️ Signaling состояние: ${connection.signalingState}`);
+  };
+
+  return connection;
+}
+
+function resetCallState(sendLeave = false) {
+  stopStats();
+  pendingRemoteCandidates.length = 0;
+
+  const currentWs = ws;
+  ws = null;
+  if (sendLeave && currentWs && currentWs.readyState === WebSocket.OPEN) {
+    currentWs.send(JSON.stringify({ type: 'leave' }));
+  }
+  if (currentWs && currentWs.readyState !== WebSocket.CLOSED && currentWs.readyState !== WebSocket.CLOSING) {
+    currentWs.close();
+  }
+
+  if (pc) {
+    try {
+      pc.getSenders().forEach(sender => {
+        if (sender.track) pc.removeTrack(sender);
+      });
+    } catch(e) {
+      console.warn(e);
+    }
+    pc.close();
+    pc = null;
+  }
+
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+
+  localVideo.srcObject = null;
+  clearRemoteTiles();
+  updateMediaButtons();
+  updateMediaStatus('Камера и микрофон не подключены', false);
+  connectBtn.disabled = false;
+  leaveBtn.disabled = true;
+  statsBtn.disabled = true;
+}
+
+connectBtn.onclick = async () => {
+  const token = sessionStorage.getItem('vc_token');
+  if (!token) {
+    log('❌ ОШИБКА: необходимо сначала войти в систему');
+    return;
+  }
+
+  const room = document.getElementById('room').value || 'room1';
+  connectBtn.disabled = true;
+
+  try {
+    localStream = await getConferenceMedia();
+    attachLocalStream(localStream);
+
+    pc = createPeerConnection();
+    for (const track of localStream.getTracks()) {
+      pc.addTrack(track, localStream);
+    }
+
+    const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(protocol + location.host + '/ws');
+
+    ws.onopen = async () => {
+      try {
+        log('🔌 WebSocket подключен');
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal({ type: 'join', room, sdp: offer.sdp, sdpType: 'offer', token });
+        log(`📤 Отправлен запрос на подключение к комнате "${room}"`);
+
+        leaveBtn.disabled = false;
+        statsBtn.disabled = false;
+        updateMediaButtons();
+      } catch(e) {
+        log('❌ Ошибка WebRTC offer: ' + e.message);
+        resetCallState(false);
       }
     };
 
-  /*
-    Точка интеграции: initial join (WebRTC offer + token)
-    - Создаём локальный SDP-offer
-    - Берём токен из sessionStorage (ключ 'vc_token')
-    - Отправляем по WebSocket сообщение join:
-      { type: "join", room, sdp: offer.sdp, sdpType: "offer", token }
-    Сервер ожидает этот формат и валидирует токен (JWT).
-  */
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-    
-  const token = sessionStorage.getItem('vc_token');
-    if (!token) {
-      log("❌ ОШИБКА: необходимо сначала войти в систему");
-      ws.close();
-      return;
-    }
-    
-    ws.send(JSON.stringify({ type: "join", room: room, sdp: offer.sdp, sdpType: "offer", token: token }));
-    log(`📤 Отправлен запрос на подключение к комнате "${room}"`);
+    ws.onmessage = (ev) => {
+      handleSignalMessage(ev).catch(e => log('❌ Ошибка сигналинга: ' + e.message));
+    };
 
-    document.getElementById('connectBtn').disabled = true;
-    document.getElementById('leaveBtn').disabled = false;
-    document.getElementById('statsBtn').disabled = false;
-  };
+    ws.onclose = (event) => {
+      log(`🔌 WebSocket закрыт (code=${event.code})`);
+      resetCallState(false);
+    };
 
-  ws.onclose = () => { 
-    log('🔌 WebSocket закрыт');
-    document.getElementById('connectBtn').disabled = false;
-    document.getElementById('leaveBtn').disabled = true;
-    document.getElementById('statsBtn').disabled = true;
-  };
-  
-  ws.onerror = (e) => { 
-    log('❌ Ошибка WebSocket: ' + JSON.stringify(e));
-  };
+    ws.onerror = () => {
+      log('❌ Ошибка WebSocket');
+    };
+  } catch(e) {
+    log('❌ Ошибка подключения: ' + e.message);
+    resetCallState(false);
+  }
 };
 
 document.getElementById('regBtn').onclick = async () => {
@@ -561,32 +921,28 @@ document.getElementById('loginBtn').onclick = async () => {
   }
 };
 
-document.getElementById('leaveBtn').onclick = () => {
-  if (ws) {
-    ws.send(JSON.stringify({ type: "leave" }));
-    ws.close();
-  }
-  if (pc) {
-    pc.getSenders().forEach(s => pc.removeTrack(s));
-    pc.close();
-    pc = null;
-  }
-  if (localStream) {
-    localStream.getTracks().forEach(t => t.stop());
-    localStream = null;
-  }
-  document.getElementById('connectBtn').disabled = false;
-  document.getElementById('leaveBtn').disabled = true;
-  document.getElementById('statsBtn').disabled = true;
-  if (statsInterval) { 
-    clearInterval(statsInterval); 
-    statsInterval = null;
-    document.getElementById('statsBtn').textContent = 'Статистика';
-  }
-  log("👋 Покинул комнату");
+leaveBtn.onclick = () => {
+  resetCallState(true);
+  log('👋 Покинул комнату');
 };
 
-document.getElementById('statsBtn').onclick = () => {
+micBtn.onclick = () => {
+  const track = getLiveTrack('audio');
+  if (!track) return;
+  track.enabled = !track.enabled;
+  updateMediaButtons();
+  log(track.enabled ? '🎤 Микрофон включен' : '🔇 Микрофон выключен');
+};
+
+cameraBtn.onclick = () => {
+  const track = getLiveTrack('video');
+  if (!track) return;
+  track.enabled = !track.enabled;
+  updateMediaButtons();
+  log(track.enabled ? '🎥 Камера включена' : '📷 Камера выключена');
+};
+
+statsBtn.onclick = () => {
   if (!pc) return;
   
   const show = async () => {
@@ -597,10 +953,11 @@ document.getElementById('statsBtn').onclick = () => {
         if (report.type === 'outbound-rtp' || report.type === 'inbound-rtp') {
           hasStats = true;
           const direction = report.type === 'outbound-rtp' ? 'Исходящий' : 'Входящий';
+          const mediaKind = report.kind || report.mediaType || 'media';
           const packets = report.packetsSent || report.packetsReceived || 0;
           const bytes = report.bytesSent || report.bytesReceived || 0;
           const jitter = report.jitter || 0;
-          log(`${direction}: пакетов=${packets}, байт=${bytes}, джиттер=${jitter.toFixed(2)}`);
+          log(`${direction} ${mediaKind}: пакетов=${packets}, байт=${bytes}, джиттер=${jitter.toFixed(2)}`);
         }
       });
       if (!hasStats) {
@@ -615,12 +972,10 @@ document.getElementById('statsBtn').onclick = () => {
   
   if (!statsInterval) {
     statsInterval = setInterval(show, 3000);
-    document.getElementById('statsBtn').textContent = 'Остановить статистику';
+    statsBtn.textContent = 'Остановить статистику';
     log('📊 Статистика включена (обновление каждые 3 сек)');
   } else {
-    clearInterval(statsInterval); 
-    statsInterval = null;
-    document.getElementById('statsBtn').textContent = 'Статистика';
+    stopStats();
     log('📊 Статистика остановлена');
   }
 };
@@ -639,6 +994,8 @@ window.addEventListener('DOMContentLoaded', () => {
   } else {
     updateTokenDisplay('⚠️ Необходимо войти в систему', false);
   }
+  updateRemoteEmpty();
+  updateMediaButtons();
   log('🚀 Интерфейс загружен');
 });
 </script>

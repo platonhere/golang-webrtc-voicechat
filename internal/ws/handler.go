@@ -95,13 +95,6 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// получаем существующую комнату или создаём новую
 	room := GetOrCreateRoom(msg.Room)
 
-	// проверяем, что пользователь ещё не подключён к этой комнате
-	if room.HasUser(uid) {
-		log.Printf("❌ BLOCKED: user \"%s\" (id=%s) already in room %s\n", prof.DisplayName, uid, msg.Room)
-		_ = conn.Close()
-		return
-	}
-
 	// создаём объект пользователя, привязанный к WebSocket и комнате
 	user := NewUser(conn, room)
 
@@ -109,14 +102,6 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	user.DisplayName = prof.DisplayName
 	// используем ID пользователя из JWT как идентификатор подключения
 	user.ID = uid
-
-	// перед добавлением пользователя в комнату проверяем, есть ли он там, предотвращая гонку
-	if !room.AddUser(user) {
-		log.Printf("❌ BLOCKED (race): user \"%s\" (id=%s) already in room %s\n", prof.DisplayName, uid, msg.Room)
-		_ = conn.Close()
-		return
-	}
-	log.Printf("✅ ALLOWED: user \"%s\" (id=%s) joining room %s\n", prof.DisplayName, uid, msg.Room)
 
 	// если клиент сразу прислал SDP offer — принимаем его и отправляем answer
 	if msg.SDP != "" && msg.SDPType == "offer" {
@@ -126,6 +111,20 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// добавляем пользователя в комнату только после успешного initial handshake,
+	// чтобы другие участники не начинали переговоры с ещё неготовым peer.
+	if room.HasUser(uid) {
+		log.Printf("❌ BLOCKED: user \"%s\" (id=%s) already in room %s\n", prof.DisplayName, uid, msg.Room)
+		user.Close()
+		return
+	}
+	if !room.AddUser(user) {
+		log.Printf("❌ BLOCKED (race): user \"%s\" (id=%s) already in room %s\n", prof.DisplayName, uid, msg.Room)
+		user.Close()
+		return
+	}
+	log.Printf("✅ ALLOWED: user \"%s\" (id=%s) joining room %s\n", prof.DisplayName, uid, msg.Room)
 
 	// запускаем горутину для чтения сообщений от клиента
 	go user.ReadPump()
