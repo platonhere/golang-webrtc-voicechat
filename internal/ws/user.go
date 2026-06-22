@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -14,18 +16,23 @@ type User struct {
 	ID          string
 	DisplayName string
 	Conn        *websocket.Conn        // WebSocket соединение с клиентом; используется для обмена сигнальными сообщениями
-	PC          *webrtc.PeerConnection // PeerConnection этого пользователя; через него проходит весь RTP-трафик (аудио) и происходит SDP-переговоры
+	PC          *webrtc.PeerConnection // PeerConnection этого пользователя; через него проходит RTP-трафик (аудио/видео) и SDP-переговоры
 	room        *Room
+	writeMtx    sync.Mutex
+	ready       atomic.Bool
 
 	// outgoing хранит локальные TrackLocalStaticRTP для каждого источника
-	// у одного источника - несколько треков, в которые он отправяет пакеты
-	// ключ srcID - (id отправителя/источника)
-	// значение - локальный трек получателя, в который приходит звук от отправителя (через сервер)
+	// у одного источника может быть несколько треков: audio, video и т.д.
+	// ключ: source user id + kind трека
+	// значение: локальный трек получателя, в который приходят RTP-пакеты от отправителя
 	outgoing map[string]*webrtc.TrackLocalStaticRTP
 	outMtx   sync.RWMutex
 
 	// защищает SDP-переговоры от race condition
 	negotiationMtx sync.Mutex
+	// повторные переговоры откладываются, если предыдущий offer ещё ждёт answer
+	needsNegotiation  bool
+	negotiationQueued atomic.Bool
 
 	// закрытие выполняется только один раз
 	closeOnce sync.Once
@@ -41,6 +48,83 @@ func NewUser(conn *websocket.Conn, room *Room) *User {
 		outgoing: make(map[string]*webrtc.TrackLocalStaticRTP),
 	}
 	return u
+}
+
+func outgoingTrackKey(srcID string, kind webrtc.RTPCodecType) string {
+	return srcID + ":" + kind.String()
+}
+
+func (u *User) writeSignal(msg interface{}) error {
+	u.writeMtx.Lock()
+	defer u.writeMtx.Unlock()
+	return u.Conn.WriteJSON(msg)
+}
+
+func (u *User) IsReady() bool {
+	return u.ready.Load()
+}
+
+func (u *User) MarkReady() {
+	u.ready.Store(true)
+}
+
+func (u *User) QueueNegotiation() {
+	if !u.negotiationQueued.CompareAndSwap(false, true) {
+		return
+	}
+
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		u.negotiationQueued.Store(false)
+		u.Negotiate()
+	}()
+}
+
+func (u *User) ensureOutgoingTrack(srcID string, remoteTrack *webrtc.TrackRemote) (*webrtc.TrackLocalStaticRTP, bool) {
+	if u.PC == nil {
+		return nil, false
+	}
+
+	key := outgoingTrackKey(srcID, remoteTrack.Kind())
+	u.outMtx.RLock()
+	existing := u.outgoing[key]
+	u.outMtx.RUnlock()
+	if existing != nil {
+		return existing, false
+	}
+
+	u.outMtx.Lock()
+	defer u.outMtx.Unlock()
+	if existing = u.outgoing[key]; existing != nil {
+		return existing, false
+	}
+
+	kind := remoteTrack.Kind().String()
+	cap := remoteTrack.Codec().RTPCodecCapability
+	localTrack, err := webrtc.NewTrackLocalStaticRTP(cap, kind+"-"+srcID, srcID)
+	if err != nil {
+		log.Println("create track local:", err)
+		return nil, false
+	}
+
+	sender, err := u.PC.AddTrack(localTrack)
+	if err != nil {
+		log.Println("PC.AddTrack error:", err)
+		return nil, false
+	}
+
+	u.outgoing[key] = localTrack
+
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, err := sender.Read(rtcpBuf); err != nil {
+				return
+			}
+		}
+	}()
+
+	return localTrack, true
 }
 
 // ReadPump слушает сообщения по WebSocket и обрабатывает сигнальные команды:
@@ -106,8 +190,17 @@ func (u *User) ReadPump() {
 				// устанавливаем это описание как remote description в PeerConnection
 				// после этого WebRTC знает, какие кодеки, форматы, ICE кандидаты использует клиент
 				// теперь наш PeerConnection может начать отправлять и получать RTP/RTCP потоки
-				if err := u.PC.SetRemoteDescription(sdp); err != nil {
+				u.negotiationMtx.Lock()
+				err := u.PC.SetRemoteDescription(sdp)
+				shouldRenegotiate := err == nil && u.needsNegotiation
+				if shouldRenegotiate {
+					u.needsNegotiation = false
+				}
+				u.negotiationMtx.Unlock()
+				if err != nil {
 					log.Println("SetRemoteDescription answer:", err)
+				} else if shouldRenegotiate {
+					go u.Negotiate()
 				}
 			}
 		case "leave":
@@ -149,20 +242,21 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 		m.Candidate = raw
 		// отправляем ICE-кандидата клиенту по WebSocket
 		// клиент добавит его в свой PeerConnection через AddICECandidate
-		_ = u.Conn.WriteJSON(m)
+		_ = u.writeSignal(m)
 	})
 
 	// когда приходит трек от этого пользователя — реплицируем его другим
 	// -
-	// OnTrack вызывается, когда сервер получает аудиотрек (TrackRemote) от конкретного пользователя (отправителя).
+	// OnTrack вызывается, когда сервер получает media track (TrackRemote) от конкретного пользователя (отправителя).
 	// для каждого другого пользователя комнаты создаётся локальный трек (TrackLocalStaticRTP), который будет принимать RTP-пакеты от сервера.
 	// этот локальный трек добавляется в PeerConnection получателя, чтобы клиент мог его слушать.
-	// RTP пакеты из исходного TrackRemote читаются в цикле и пишутся во все локальные треки других пользователей — это фактическая пересылка аудио.
+	// RTP пакеты из исходного TrackRemote читаются в цикле и пишутся во все локальные треки других пользователей — это фактическая пересылка аудио/видео.
 	// Negotiate вызывается после добавления трека, чтобы инициировать SDP-переговоры и сообщить клиентам про новый трек.
 	pc.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		srcID := u.ID
+		kind := remoteTrack.Kind().String()
 		// логируем получение трека от конкретного пользователя
-		log.Printf("OnTrack: got track from %s codec=%s\n", srcID, remoteTrack.Codec().MimeType)
+		log.Printf("OnTrack: got %s track from %s codec=%s\n", kind, srcID, remoteTrack.Codec().MimeType)
 
 		if u.room != nil {
 			// проходим по всем пользователям в комнате
@@ -171,30 +265,19 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 				if other.ID == srcID {
 					return
 				}
+				if !other.IsReady() {
+					log.Printf("skip adding track for user %s: handshake not ready\n", other.ID)
+					return
+				}
 				// если PeerConnection получателя ещё не готов - скип
 				if other.PC == nil {
 					log.Printf("skip adding track for user %s: PC not ready\n", other.ID)
 					return
 				}
-				// получаем параметры кодека удаленного трека, который прислал отправитель
-				cap := remoteTrack.Codec().RTPCodecCapability
 				// создаём локальный трек для получателя, чтобы сервер мог писать в него RTP пакеты
-				localTrack, err := webrtc.NewTrackLocalStaticRTP(cap, "audio", srcID)
-				if err != nil {
-					log.Println("create track local:", err)
-					return
+				if _, created := other.ensureOutgoingTrack(srcID, remoteTrack); created {
+					other.QueueNegotiation()
 				}
-				// записываем в мапу лок.трек получателя для конкретного отправителя (srcID)
-				other.outMtx.Lock()
-				other.outgoing[srcID] = localTrack
-				other.outMtx.Unlock()
-
-				// добавляем трек в PeerConnection получателя
-				if _, err := other.PC.AddTrack(localTrack); err != nil {
-					log.Println("other.PC.AddTrack error:", err)
-				}
-				// в горутине инициируем повторную SDP re-negotiation с other, сервер создаёт offer, отправляет по WS, ждёт answer
-				go other.Negotiate()
 			})
 		}
 
@@ -212,11 +295,14 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 					if dest.ID == srcID {
 						return
 					}
+					if !dest.IsReady() {
+						return
+					}
 
-					// берем локальный трек получателя
-					dest.outMtx.RLock()
-					tr := dest.outgoing[srcID]
-					dest.outMtx.RUnlock()
+					tr, created := dest.ensureOutgoingTrack(srcID, remoteTrack)
+					if created {
+						dest.QueueNegotiation()
+					}
 
 					// если смогли взять трек, пишем в него rtp-пакеты
 					if tr != nil {
@@ -266,10 +352,11 @@ func (u *User) ReceiveOfferAndAnswerBack(offerSDP string) error {
 		SDPType: local.Type.String(),
 	}
 	// отправляем клиенту answer через WebSocket
-	// после этого клиент сможет установить remote description и начать передачу аудио
-	if err := u.Conn.WriteJSON(resp); err != nil {
+	// после этого клиент сможет установить remote description и начать передачу аудио/видео
+	if err := u.writeSignal(resp); err != nil {
 		return err
 	}
+	u.MarkReady()
 	return nil
 }
 
@@ -281,6 +368,13 @@ func (u *User) Negotiate() {
 	}
 	u.negotiationMtx.Lock()
 	defer u.negotiationMtx.Unlock()
+
+	if u.PC.SignalingState() != webrtc.SignalingStateStable {
+		u.needsNegotiation = true
+		log.Println("negotiation postponed, signaling state:", u.PC.SignalingState())
+		return
+	}
+	u.needsNegotiation = false
 
 	// создаём SDP offer — описание текущего состояния PeerConnection:
 	// какие треки, кодеки и направления передачи сервер предлагает клиенту
@@ -309,7 +403,7 @@ func (u *User) Negotiate() {
 		SDP:     local.SDP,
 		SDPType: local.Type.String(),
 	}
-	if err := u.Conn.WriteJSON(msg); err != nil {
+	if err := u.writeSignal(msg); err != nil {
 		log.Println("send offer:", err)
 	}
 }
