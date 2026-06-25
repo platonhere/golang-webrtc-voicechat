@@ -11,7 +11,6 @@ WebRTC-приложение для голосовых и видеоконфер�
 
 ## Оглавление
 
-- [Архитектура](#архитектура)
 - [Как работает конференция](#как-работает-конференция)
 - [Структура проекта](#структура-проекта)
 - [Технологический стек](#технологический-стек)
@@ -25,23 +24,21 @@ WebRTC-приложение для голосовых и видеоконфер�
 - [Roadmap](#roadmap)
 - [English Version](#english-version)
 
-## Архитектура
 
-```mermaid
-flowchart LR
-    BrowserA["Browser A"] --> HTTP["Go HTTP API"]
-    BrowserB["Browser B"] --> HTTP
-    HTTP --> Postgres["PostgreSQL users"]
-    BrowserA <-->|WebSocket signaling| WS["/ws handler"]
-    BrowserB <-->|WebSocket signaling| WS
-    WS --> Room["In-memory room registry"]
-    BrowserA <-->|WebRTC PeerConnection| PionA["Pion PeerConnection A"]
-    BrowserB <-->|WebRTC PeerConnection| PionB["Pion PeerConnection B"]
-    PionA --> Relay["RTP media relay"]
-    Relay --> PionB
-    PionB --> Relay
-    Relay --> PionA
-```
+## Технологический стек
+
+| Компонент | Технологии |
+| --- | --- |
+| Language | Go 1.24 |
+| HTTP routing | Gorilla Mux |
+| WebSocket | Gorilla WebSocket |
+| WebRTC server | Pion WebRTC v4 |
+| Persistence | PostgreSQL, pgx stdlib driver |
+| Auth | JWT HS256, bcrypt password hashing |
+| Frontend | Vanilla HTML, CSS, JavaScript |
+| Browser media | MediaDevices API, RTCPeerConnection |
+| Quality | gofmt, go test |
+
 
 ### Основной поток
 
@@ -56,40 +53,6 @@ flowchart LR
 9. При появлении новых tracks сервер запускает renegotiation и рассылает SDP offer получателям.
 10. RTP-пакеты читаются из `TrackRemote` отправителя и пишутся в `TrackLocalStaticRTP` получателей.
 
-## Как работает конференция
-
-### Signaling
-
-Сигналинг проходит через WebSocket endpoint `/ws`. Сервер не передает media по WebSocket: WebSocket используется только для служебных сообщений WebRTC.
-
-```text
-client
-  -> join(room, token, offer)
-server
-  -> answer
-client/server
-  -> candidate
-server
-  -> offer on renegotiation
-client
-  -> answer
-```
-
-### Media relay
-
-Сервер работает как простой SFU-like relay:
-
-- каждый участник имеет один Pion `PeerConnection`;
-- входящие audio/video tracks приходят на сервер как `TrackRemote`;
-- для каждого другого участника сервер создает отдельный `TrackLocalStaticRTP`;
-- ключ исходящего трека учитывает отправителя и тип media: `source_user_id + kind`;
-- audio и video не перетирают друг друга и пересылаются как отдельные tracks.
-
-### Комнаты
-
-Комнаты хранятся в памяти процесса. Если комната становится пустой, она удаляется из глобальной таблицы rooms.
-
-Текущая модель допускает один активный WebSocket-сеанс одного пользователя в одной комнате. Для теста с двумя участниками нужны два разных аккаунта.
 
 ## Структура проекта
 
@@ -106,20 +69,6 @@ check_token.html       small helper page for token diagnostics
 go.mod                 Go module and dependencies
 go.sum                 dependency lock file
 ```
-
-## Технологический стек
-
-| Компонент | Технологии |
-| --- | --- |
-| Language | Go 1.24 |
-| HTTP routing | Gorilla Mux |
-| WebSocket | Gorilla WebSocket |
-| WebRTC server | Pion WebRTC v4 |
-| Persistence | PostgreSQL, pgx stdlib driver |
-| Auth | JWT HS256, bcrypt password hashing |
-| Frontend | Vanilla HTML, CSS, JavaScript |
-| Browser media | MediaDevices API, RTCPeerConnection |
-| Quality | gofmt, go test |
 
 ## Предварительные требования
 
@@ -169,13 +118,6 @@ go run ./cmd/server
 http://localhost:8080
 ```
 
-Для проверки конференции:
-
-1. Откройте `http://localhost:8080` в двух браузерах или в обычном окне и инкогнито.
-2. Зарегистрируйте два разных аккаунта.
-3. Войдите под каждым аккаунтом.
-4. Подключите оба аккаунта к одной комнате, например `room1`.
-5. Разрешите доступ к камере и микрофону.
 
 ## Конфигурация
 
@@ -213,67 +155,6 @@ Runtime defaults:
 | `GET` | `/` | Статический UI |
 | `GET` | `/ws` | WebSocket endpoint для signaling |
 
-### Регистрация
-
-```bash
-curl -i -X POST http://localhost:8080/api/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"secret"}'
-```
-
-Успешный ответ:
-
-```text
-HTTP/1.1 201 Created
-```
-
-### Логин
-
-```bash
-curl -s -X POST http://localhost:8080/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"secret"}'
-```
-
-Пример ответа:
-
-```json
-{
-  "token": "jwt-token"
-}
-```
-
-### Текущий пользователь
-
-```bash
-curl -s http://localhost:8080/api/me \
-  -H "Authorization: Bearer <jwt-token>"
-```
-
-Пример ответа:
-
-```json
-{
-  "ID": "user-id",
-  "Username": "alice",
-  "DisplayName": "alice",
-  "CreatedAt": "2026-06-22T12:00:00Z"
-}
-```
-
-## WebSocket signaling
-
-Первое сообщение после открытия WebSocket должно быть `join`.
-
-```json
-{
-  "type": "join",
-  "room": "room1",
-  "token": "jwt-token",
-  "sdp": "v=0...",
-  "sdpType": "offer"
-}
-```
 
 Поддерживаемые signaling-сообщения:
 
@@ -317,80 +198,3 @@ curl -I http://localhost:8080/
 ```
 
 
-## Roadmap
-
-- TURN configuration для production NAT traversal.
-- Docker Compose с PostgreSQL и готовым local dev окружением.
-- Room roster: список участников, имена на видео-плитках, presence events.
-- Mute/camera state signaling между участниками.
-- Screen sharing.
-- Chat messages внутри комнаты.
-- Metrics и structured logs для WebRTC state transitions.
-- Graceful cleanup outgoing tracks при отключении участника.
-- Browser integration tests для сценария двух участников.
-- Origin policy и production-ready auth/session layer.
-
-## English Version
-
-# VoiceChat Conference
-
-WebRTC voice and video conferencing app with JWT authentication, PostgreSQL-backed users, WebSocket signaling, and server-side media track forwarding through Pion.
-
-## Pipeline
-
-```text
-register/login
-  -> JWT token
-  -> getUserMedia(audio + video)
-  -> RTCPeerConnection offer
-  -> WebSocket join(room + token + SDP)
-  -> Pion PeerConnection answer
-  -> room membership
-  -> remote audio/video tracks
-  -> RTP forwarding to other participants
-  -> renegotiation when new tracks are added
-```
-
-## Stack
-
-- Go 1.24
-- Gorilla Mux
-- Gorilla WebSocket
-- Pion WebRTC v4
-- PostgreSQL via pgx
-- JWT HS256
-- bcrypt
-- Vanilla HTML, CSS and JavaScript
-
-## Run
-
-```bash
-createdb voice_chat_base
-go mod download
-go run ./cmd/server
-```
-
-Open:
-
-```text
-http://localhost:8080
-```
-
-Do not open `static/index.html` directly through `file://`. The browser UI must be served by the Go server so `/api/*` and `/ws` resolve correctly.
-
-## API
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `POST` | `/api/register` | Register user |
-| `POST` | `/api/login` | Login and return JWT |
-| `GET` | `/api/me` | Return current user |
-| `GET` | `/ws` | WebSocket signaling endpoint |
-
-## Production Notes
-
-- Configure a strong `VOICECHAT_JWT_SECRET`.
-- Add TURN servers for reliable NAT traversal.
-- Restrict WebSocket origins.
-- Move room state out of process before horizontal scaling.
-- Add browser-level WebRTC integration tests.
