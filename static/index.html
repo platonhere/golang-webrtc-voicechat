@@ -645,13 +645,13 @@ async function getConferenceMedia() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
-    log('🎥 Доступ к камере и микрофону получен');
+    log('Доступ к камере и микрофону получен');
     updateMediaStatus('Камера и микрофон активны', true);
     return stream;
   } catch (videoError) {
-    log('⚠️ Камера недоступна, пробуем подключить только микрофон: ' + videoError.message);
+    log('Камера недоступна, пробуем подключить только микрофон: ' + videoError.message);
     const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
-    log('🎤 Доступ к микрофону получен');
+    log('Доступ к микрофону получен');
     updateMediaStatus('Подключен только микрофон', true);
     return stream;
   }
@@ -676,22 +676,22 @@ async function flushPendingRemoteCandidates() {
     const candidate = pendingRemoteCandidates.shift();
     try {
       await pc.addIceCandidate(candidate);
-      log('✅ Добавлен ICE кандидат');
+      log('ICE кандидат добавлен');
     } catch (e) {
-      log('❌ Ошибка ICE кандидата: ' + e.message);
+      log('Ошибка ICE кандидата: ' + e.message);
     }
   }
 }
 
 async function handleSignalMessage(ev) {
   const msg = JSON.parse(ev.data);
-  log(`📨 Сообщение: ${msg.type}`);
+  log(`Сообщение: ${msg.type}`);
   if (!pc) return;
 
   if (msg.type === 'answer') {
     const desc = { type: 'answer', sdp: msg.sdp };
     await pc.setRemoteDescription(desc);
-    log('✅ Установлено удаленное описание (answer)');
+    log('Удаленное описание установлено (answer)');
     await flushPendingRemoteCandidates();
   } else if (msg.type === 'offer') {
     const offer = { type: 'offer', sdp: msg.sdp };
@@ -700,18 +700,18 @@ async function handleSignalMessage(ev) {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     sendSignal({ type: 'answer', sdp: answer.sdp, sdpType: 'answer' });
-    log('✅ Отправлен ответ на предложение сервера');
+    log('Ответ на предложение сервера отправлен');
   } else if (msg.type === 'candidateFromServer' || msg.type === 'candidate') {
     if (msg.candidate) {
       if (!pc.remoteDescription) {
         pendingRemoteCandidates.push(msg.candidate);
-        log('⏳ ICE кандидат поставлен в очередь');
+        log('ICE кандидат поставлен в очередь');
       } else {
         try {
           await pc.addIceCandidate(msg.candidate);
-          log('✅ Добавлен ICE кандидат');
+          log('ICE кандидат добавлен');
         } catch(e) {
-          log('❌ Ошибка ICE кандидата: ' + e.message);
+          log('Ошибка ICE кандидата: ' + e.message);
         }
       }
     }
@@ -726,7 +726,7 @@ function createPeerConnection() {
   connection.ontrack = (ev) => {
     const stream = ev.streams[0] || new MediaStream([ev.track]);
     attachRemoteTrack(stream, ev.track);
-    log(`🎬 Получен ${ev.track.kind === 'video' ? 'видео' : 'аудио'} поток`);
+    log(`Получен ${ev.track.kind === 'video' ? 'видео' : 'аудио'} поток`);
   };
 
   connection.onicecandidate = (e) => {
@@ -735,15 +735,15 @@ function createPeerConnection() {
   };
 
   connection.onconnectionstatechange = () => {
-    log(`🔁 WebRTC состояние: ${connection.connectionState}`);
+    log(`WebRTC состояние: ${connection.connectionState}`);
   };
 
   connection.oniceconnectionstatechange = () => {
-    log(`🧊 ICE состояние: ${connection.iceConnectionState}`);
+    log(`ICE состояние: ${connection.iceConnectionState}`);
   };
 
   connection.onsignalingstatechange = () => {
-    log(`🛰️ Signaling состояние: ${connection.signalingState}`);
+    log(`Signaling состояние: ${connection.signalingState}`);
   };
 
   return connection;
@@ -791,7 +791,7 @@ function resetCallState(sendLeave = false) {
 connectBtn.onclick = async () => {
   const token = sessionStorage.getItem('vc_token');
   if (!token) {
-    log('❌ ОШИБКА: необходимо сначала войти в систему');
+    log('Ошибка: необходимо сначала войти в систему');
     return;
   }
 
@@ -812,35 +812,35 @@ connectBtn.onclick = async () => {
 
     ws.onopen = async () => {
       try {
-        log('🔌 WebSocket подключен');
+        log('WebSocket подключен');
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         sendSignal({ type: 'join', room, sdp: offer.sdp, sdpType: 'offer', token });
-        log(`📤 Отправлен запрос на подключение к комнате "${room}"`);
+        log(`Отправлен запрос на подключение к комнате "${room}"`);
 
         leaveBtn.disabled = false;
         statsBtn.disabled = false;
         updateMediaButtons();
       } catch(e) {
-        log('❌ Ошибка WebRTC offer: ' + e.message);
+        log('Ошибка WebRTC offer: ' + e.message);
         resetCallState(false);
       }
     };
 
     ws.onmessage = (ev) => {
-      handleSignalMessage(ev).catch(e => log('❌ Ошибка сигналинга: ' + e.message));
+      handleSignalMessage(ev).catch(e => log('Ошибка сигналинга: ' + e.message));
     };
 
     ws.onclose = (event) => {
-      log(`🔌 WebSocket закрыт (code=${event.code})`);
+      log(`WebSocket закрыт (code=${event.code})`);
       resetCallState(false);
     };
 
     ws.onerror = () => {
-      log('❌ Ошибка WebSocket');
+      log('Ошибка WebSocket');
     };
   } catch(e) {
-    log('❌ Ошибка подключения: ' + e.message);
+    log('Ошибка подключения: ' + e.message);
     resetCallState(false);
   }
 };
@@ -850,17 +850,11 @@ document.getElementById('regBtn').onclick = async () => {
   const password = document.getElementById('regPass').value;
   
   if (!username || !password) {
-    log('⚠️ Заполните все поля');
+    log('Заполните все поля');
     return;
   }
   
   try {
-    /*
-      Точка интеграции: регистрация
-      - POST /api/register
-      - тело: { username, password }
-      - успешный ответ: 201 Created
-    */
     const res = await fetch('/api/register', { 
       method: 'POST', 
       body: JSON.stringify({ username, password }), 
@@ -868,15 +862,15 @@ document.getElementById('regBtn').onclick = async () => {
     });
     
     if (res.status === 201) {
-      log('✅ Регистрация успешна');
+      log('Регистрация успешна');
       document.getElementById('regUser').value = '';
       document.getElementById('regPass').value = '';
     } else {
       const text = await res.text();
-      log('❌ Ошибка регистрации: ' + (text || 'неизвестная ошибка'));
+      log('Ошибка регистрации: ' + (text || 'неизвестная ошибка'));
     }
   } catch(e) { 
-    log('❌ Ошибка регистрации: ' + e.message);
+    log('Ошибка регистрации: ' + e.message);
   }
 };
 
@@ -885,19 +879,11 @@ document.getElementById('loginBtn').onclick = async () => {
   const password = document.getElementById('loginPass').value;
   
   if (!username || !password) {
-    log('⚠️ Заполните все поля');
+    log('Заполните все поля');
     return;
   }
   
   try {
-    /*
-      Точка интеграции: логин
-      - POST /api/login
-      - тело: { username, password }
-      - ответ: { token }
-      - токен сохраняется в sessionStorage под ключом 'vc_token' и
-        используется при отправке join по WebSocket
-    */
     const res = await fetch('/api/login', { 
       method: 'POST', 
       body: JSON.stringify({ username, password }), 
@@ -907,23 +893,23 @@ document.getElementById('loginBtn').onclick = async () => {
     const j = await res.json();
     if (j.token) {
       sessionStorage.setItem('vc_token', j.token);
-      updateTokenDisplay('✅ Выполнен вход', true);
-      log('✅ Вход выполнен успешно');
+      updateTokenDisplay('Выполнен вход', true);
+      log('Вход выполнен успешно');
       document.getElementById('loginUser').value = '';
       document.getElementById('loginPass').value = '';
     } else {
-      updateTokenDisplay('❌ Ошибка входа', false);
-      log('❌ Ошибка входа: неверные данные');
+      updateTokenDisplay('Ошибка входа', false);
+      log('Ошибка входа: неверные данные');
     }
   } catch(e) { 
-    updateTokenDisplay('❌ Ошибка входа', false);
-    log('❌ Ошибка входа: ' + e.message);
+    updateTokenDisplay('Ошибка входа', false);
+    log('Ошибка входа: ' + e.message);
   }
 };
 
 leaveBtn.onclick = () => {
   resetCallState(true);
-  log('👋 Покинул комнату');
+  log('Покинул комнату');
 };
 
 micBtn.onclick = () => {
@@ -931,7 +917,7 @@ micBtn.onclick = () => {
   if (!track) return;
   track.enabled = !track.enabled;
   updateMediaButtons();
-  log(track.enabled ? '🎤 Микрофон включен' : '🔇 Микрофон выключен');
+  log(track.enabled ? 'Микрофон включен' : 'Микрофон выключен');
 };
 
 cameraBtn.onclick = () => {
@@ -939,7 +925,7 @@ cameraBtn.onclick = () => {
   if (!track) return;
   track.enabled = !track.enabled;
   updateMediaButtons();
-  log(track.enabled ? '🎥 Камера включена' : '📷 Камера выключена');
+  log(track.enabled ? 'Камера включена' : 'Камера выключена');
 };
 
 statsBtn.onclick = () => {
@@ -961,10 +947,10 @@ statsBtn.onclick = () => {
         }
       });
       if (!hasStats) {
-        log('📊 Статистика пока недоступна');
+        log('Статистика пока недоступна');
       }
     } catch(e) {
-      log('❌ Ошибка получения статистики: ' + e.message);
+      log('Ошибка получения статистики: ' + e.message);
     }
   };
   
@@ -973,30 +959,24 @@ statsBtn.onclick = () => {
   if (!statsInterval) {
     statsInterval = setInterval(show, 3000);
     statsBtn.textContent = 'Остановить статистику';
-    log('📊 Статистика включена (обновление каждые 3 сек)');
+    log('Статистика включена (обновление каждые 3 сек)');
   } else {
     stopStats();
-    log('📊 Статистика остановлена');
+    log('Статистика остановлена');
   }
 };
 
-// Проверка сохраненного токена при загрузке
 window.addEventListener('DOMContentLoaded', () => {
-  /*
-    Проверка токена при загрузке страницы
-    - Если токен найден в sessionStorage, помечаем UI как авторизованный
-    - Заметьте: token хранится в sessionStorage (не между вкладками)
-  */
   const token = sessionStorage.getItem('vc_token');
   if (token) {
-    updateTokenDisplay('✅ Токен найден (вход выполнен ранее)', true);
-    log('ℹ️ Найден сохраненный токен');
+    updateTokenDisplay('Токен найден (вход выполнен ранее)', true);
+    log('Найден сохраненный токен');
   } else {
-    updateTokenDisplay('⚠️ Необходимо войти в систему', false);
+    updateTokenDisplay('Необходимо войти в систему', false);
   }
   updateRemoteEmpty();
   updateMediaButtons();
-  log('🚀 Интерфейс загружен');
+  log('Интерфейс загружен');
 });
 </script>
 </body>
