@@ -11,7 +11,6 @@ WebRTC-приложение для голосовых и видеоконфер�
 
 ## Оглавление
 - [Технологический стек](#технологический-стек)
-- [Структура проекта](#структура-проекта)
 - [Предварительные требования](#предварительные-требования)
 - [Установка и запуск](#установка-и-запуск)
 - [Конфигурация](#конфигурация)
@@ -48,22 +47,6 @@ WebRTC-приложение для голосовых и видеоконфер�
 9. При появлении новых tracks сервер запускает renegotiation и рассылает SDP offer получателям.
 10. RTP-пакеты читаются из `TrackRemote` отправителя и пишутся в `TrackLocalStaticRTP` получателей.
 
-
-## Структура проекта
-
-```text
-cmd/server/
-  main.go              HTTP server, routes, static files, WebSocket endpoint
-internal/
-  auth/                JWT generation and validation
-  store/               PostgreSQL access, user registration and authentication
-  ws/                  rooms, users, WebSocket signaling, Pion media relay
-static/
-  index.html           browser UI, auth forms, room controls, WebRTC client
-check_token.html       small helper page for token diagnostics
-go.mod                 Go module and dependencies
-go.sum                 dependency lock file
-```
 
 ## Предварительные требования
 
